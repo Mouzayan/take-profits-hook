@@ -36,6 +36,16 @@ equivalently, the higher the price of Token 0 (A) in terms of Token 1 (B).
 We will have our hook be an ERC-1155 contract so we can issue "claim" tokens to the users proportional
 to how many input tokens they provided for their order, and will use that to calculate how many output
 tokens they have available to claim.
+
+User Placing Order Flow:
+Users specify which pool to place the order for, what tick to sell their tokens at,
+which direction the swap is happening, and how many tokens to sell
+Users may specify any arbitrary tick, pick the closest actual usable tick based on
+the tick spacing of the pool - rounding down by default.
+Save user order info in storage.
+Mint "claim" tokens to users so they can claim output tokens that uniquely represent
+their order parameters.
+Transfer the input tokens from user wallets to the hook contract.
  */
 
 contract TakeProfitsHook is BaseHook, ERC1155 {
@@ -52,6 +62,14 @@ contract TakeProfitsHook is BaseHook, ERC1155 {
 	error InvalidOrder();
 	error NothingToClaim();
 	error NotEnoughToClaim();
+
+    // State
+    // mapping to store pending orders to identify user positions
+    mapping(PoolId poolId =>
+	    mapping(int24 tickToSellAt =>
+		    mapping(bool zeroForOne => uint256 inputAmount)
+        )
+    ) public pendingOrders;
 
     constructor(
         IPoolManager _manager,
@@ -105,13 +123,23 @@ contract TakeProfitsHook is BaseHook, ERC1155 {
         return (this.afterSwap.selector, 0);
     }
 
-    // Placing Orders:
-    // Users specify which pool to place the order for, what tick to sell their tokens at,
-    // which direction the swap is happening, and how many tokens to sell
-    // Users may specify any arbitrary tick, pick the closest actual usable tick based on
-    // the tick spacing of the pool - rounding down by default.
-    // Save user order info in storage.
-    // Mint "claim" tokens to users so they can claim output tokens that uniquely represent
-    // their order parameters.
-    // Transfer the input tokens from user wallets to the hook contract.
+    // Round down to the closest lower tick usable
+    function getLowerUsableTick(
+    int24 tick,
+    int24 tickSpacing
+    ) private pure returns (int24) {
+        // E.g. tickSpacing = 60, tick = -100
+        // closest usable tick rounded-down will be -120
+
+        // intervals = -100/60 = -1 (integer division)
+        int24 intervals = tick / tickSpacing;
+
+        // since tick < 0, we round `intervals` down to -2
+        // if tick > 0, `intervals` is fine as it is
+        if (tick < 0 && tick % tickSpacing != 0) intervals--; // round towards negative infinity
+
+        // actual usable tick, then, is intervals * tickSpacing
+        // i.e. -2 * 60 = -120
+        return intervals * tickSpacing;
+    }
 }
