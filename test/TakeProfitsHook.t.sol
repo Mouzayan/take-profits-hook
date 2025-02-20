@@ -143,6 +143,35 @@ contract TakeProfitsHookTest is Test, Deployers {
         assertEq(tokenBalance, amount);
     }
 
+    function test_cancelOrder() public {
+        // Place an order as earlier
+        int24 tick = 100;
+        uint256 amount = 10e18;
+        bool zeroForOne = true;
+
+        uint256 originalBalance = token0.balanceOfSelf();
+        int24 tickLower = hook.placeOrder(key, tick, zeroForOne, amount);
+        uint256 newBalance = token0.balanceOfSelf();
+
+        assertEq(tickLower, 60);
+        assertEq(originalBalance - newBalance, amount);
+
+        // Check the balance of ERC-1155 tokens we received
+        uint256 positionId = hook.getPositionId(key, tickLower, zeroForOne);
+        uint256 tokenBalance = hook.balanceOf(address(this), positionId);
+        assertEq(tokenBalance, amount);
+
+        // Cancel the order
+        hook.cancelOrder(key, tickLower, zeroForOne, amount);
+
+        // Check that we received our token0 tokens back, and no longer own any ERC-1155 tokens
+        uint256 finalBalance = token0.balanceOfSelf();
+        assertEq(finalBalance, originalBalance);
+
+        tokenBalance = hook.balanceOf(address(this), positionId);
+        assertEq(tokenBalance, 0);
+    }
+
     function onERC1155Received(
     address,
     address,
